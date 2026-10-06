@@ -36,6 +36,13 @@ nav button[aria-selected=true]{background:var(--brand);color:#fff;border-color:v
 .krow{display:grid;gap:8px;grid-template-columns:1fr;border-top:1px solid var(--line);padding:10px 0}
 @media(min-width:620px){.krow{grid-template-columns:1fr 1.5fr 90px;align-items:center}}
 .krow button{width:auto}
+.ucard{border:1px solid var(--line);border-radius:10px;padding:4px 12px 12px;margin-bottom:10px}
+.urow{display:grid;gap:0 10px;grid-template-columns:1fr}
+@media(min-width:620px){.urow{grid-template-columns:1fr 1.4fr 1fr 1.2fr}}
+.uact{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}
+.uact button{width:auto}
+.chk{display:flex;align-items:center;gap:6px;margin:0;color:var(--ink);flex:1;font-size:14px}
+.chk input{width:auto;min-height:0}
 @media(min-width:620px){.krow.g{grid-template-columns:1.6fr 1fr 90px}}
 .logo{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .logo img,.logo .ph{width:72px;height:72px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff}
@@ -91,6 +98,12 @@ h2.sub{font-size:15px;margin:16px 0 0}h2.sub:first-child{margin-top:0}
     <section id="t-laporan" class="card hidden">
       <p style="margin-top:0">Unduh laporan piket harian resmi (kop surat dan tanda tangan Kepala Sekolah) untuk tanggal yang dipilih.</p>
       <button id="btnPdf">Unduh Laporan Harian (PDF)</button>
+    </section>
+
+    <section id="t-pengguna" class="card hidden">
+      <p style="margin-top:0;color:var(--mute);font-size:13px">Kelola akun login. Menonaktifkan akun, mengganti peran, atau mereset password langsung berlaku. Akun yang direset atau dinonaktifkan otomatis keluar dari aplikasi. Anda tidak dapat menghapus atau menurunkan akun sendiri.</p>
+      <div id="listPengguna"></div>
+      <button id="btnTambahPengguna" class="alt" type="button">+ Tambah Pengguna</button>
     </section>
 
     <section id="t-dataguru" class="card hidden">
@@ -200,6 +213,7 @@ const TAB = [
   ['guru', 'Presensi Guru', ['admin', 'piket']],
   ['kejadian', 'Kejadian', ['admin', 'piket']],
   ['laporan', 'Laporan', ['admin', 'piket', 'kepsek', 'walikelas', 'guru']],
+  ['pengguna', 'Data Pengguna', ['admin']],
   ['dataguru', 'Data Guru', ['admin']],
   ['kelas', 'Data Kelas', ['admin']],
   ['pengaturan', 'Pengaturan', ['admin']],
@@ -224,6 +238,7 @@ function pilihTab(t) {
   TAB.forEach(x => $('t-' + x[0]).classList.toggle('hidden', x[0] !== t));
   $('tabs').querySelectorAll('button').forEach(b => b.setAttribute('aria-selected', b.dataset.t === t));
   if (t === 'guru') renderGuru();
+  if (t === 'pengguna') muatPengguna();
   if (t === 'dataguru') muatDataGuru();
   if (t === 'kelas') muatKelas();
   if (t === 'pengaturan') muatPengaturan();
@@ -304,6 +319,62 @@ $('btnGanti').onclick = () => jalankan($('btnGanti'), async () => {
   $('pLama').value = ''; $('pBaru').value = '';
   info('Password berhasil diganti.');
 });
+
+/* ---- data pengguna (khusus admin) ---- */
+const ROLE_LABEL = {admin: 'Admin', piket: 'Guru Piket', guru: 'Guru Mapel', walikelas: 'Wali Kelas', kepsek: 'Kepala Sekolah'};
+function kartuPengguna(d) {
+  const el = document.createElement('div');
+  el.className = 'ucard'; el.dataset.baru = d.baru ? '1' : '';
+  const opsiRole = Object.keys(ROLE_LABEL).map(r => `<option value="${r}"${r === d.role ? ' selected' : ''}>${ROLE_LABEL[r]}</option>`).join('');
+  el.innerHTML = `<div class="urow">
+      <div><label>Username</label><input class="f-user" maxlength="30" autocapitalize="none" autocomplete="off" value="${esc(d.username)}" ${d.baru ? '' : 'readonly'}></div>
+      <div><label>Nama</label><input class="f-nama" maxlength="100" value="${esc(d.nama)}"></div>
+      <div><label>Peran</label><select class="f-role">${opsiRole}</select></div>
+      <div><label>${d.baru ? 'Password (min. 8 karakter)' : 'Reset password (opsional)'}</label><input class="f-pass" type="password" autocomplete="new-password" placeholder="${d.baru ? '' : 'Kosongkan jika tidak diubah'}"></div>
+    </div>
+    <div class="uact">
+      <label class="chk"><input type="checkbox" class="f-aktif" ${d.aktif ? 'checked' : ''} ${d.baru ? 'disabled' : ''}> Akun aktif</label>
+      <button type="button" class="simpan">${d.baru ? 'Buat Akun' : 'Simpan'}</button>
+      <button type="button" class="alt hapus">${d.baru ? 'Batal' : 'Hapus'}</button>
+    </div>`;
+  const tombolSimpan = el.querySelector('.simpan'), tombolHapus = el.querySelector('.hapus');
+  tombolSimpan.onclick = () => jalankan(tombolSimpan, async () => {
+    const p = {
+      baru: !!el.dataset.baru, username: el.querySelector('.f-user').value, nama: el.querySelector('.f-nama').value,
+      role: el.querySelector('.f-role').value, aktif: el.querySelector('.f-aktif').checked, password: el.querySelector('.f-pass').value
+    };
+    await api('simpanPengguna', p);
+    info(p.baru ? 'Akun berhasil dibuat.' : 'Perubahan akun tersimpan.');
+    await muatPengguna();
+  });
+  let menunggu = null;
+  tombolHapus.onclick = () => {
+    if (el.dataset.baru) { el.remove(); return; }
+    if (!menunggu) {
+      tombolHapus.textContent = 'Yakin hapus?';
+      menunggu = setTimeout(() => { menunggu = null; tombolHapus.textContent = 'Hapus'; }, 4000);
+      return;
+    }
+    clearTimeout(menunggu); menunggu = null;
+    jalankan(tombolHapus, async () => {
+      await api('hapusPengguna', {username: d.username});
+      info('Akun dihapus.');
+      await muatPengguna();
+    }).finally(() => { tombolHapus.textContent = 'Hapus'; });
+  };
+  $('listPengguna').appendChild(el);
+  return el;
+}
+async function muatPengguna() {
+  try {
+    const data = await api('getPengguna');
+    $('listPengguna').innerHTML = '';
+    data.forEach(u => kartuPengguna(u));
+  } catch (e) { info(e.message, 'err'); }
+}
+$('btnTambahPengguna').onclick = () => {
+  kartuPengguna({username: '', nama: '', role: 'piket', aktif: true, baru: true}).querySelector('.f-user').focus();
+};
 
 /* ---- data guru (khusus admin) ---- */
 function barisDataGuru(id, nama, nip) {
