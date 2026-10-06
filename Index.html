@@ -33,6 +33,10 @@ nav button[aria-selected=true]{background:var(--brand);color:#fff;border-color:v
 .pesan.err{background:#fdecea;color:var(--bad)}.pesan.ok{background:#e7f6ec;color:var(--ok)}
 .kosong{color:var(--mute);text-align:center;padding:18px}
 .hidden{display:none!important}
+.krow{display:grid;gap:8px;grid-template-columns:1fr;border-top:1px solid var(--line);padding:10px 0}
+@media(min-width:620px){.krow{grid-template-columns:1fr 1.5fr 90px;align-items:center}}
+.krow button{width:auto}
+@media(min-width:620px){.krow.g{grid-template-columns:1.6fr 1fr 90px}}
 .logo{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .logo img,.logo .ph{width:72px;height:72px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff}
 .logo .ph{display:flex;align-items:center;justify-content:center;color:var(--mute);font-size:11px;text-align:center}
@@ -87,6 +91,24 @@ h2.sub{font-size:15px;margin:16px 0 0}h2.sub:first-child{margin-top:0}
     <section id="t-laporan" class="card hidden">
       <p style="margin-top:0">Unduh laporan piket harian resmi (kop surat dan tanda tangan Kepala Sekolah) untuk tanggal yang dipilih.</p>
       <button id="btnPdf">Unduh Laporan Harian (PDF)</button>
+    </section>
+
+    <section id="t-dataguru" class="card hidden">
+      <p style="margin-top:0;color:var(--mute);font-size:13px">Kelola data guru. Mengganti nama guru otomatis memperbarui wali kelas, jadwal piket, dan riwayat presensi guru. Guru yang masih menjadi wali kelas atau terdaftar di jadwal piket tidak dapat dihapus.</p>
+      <div id="listDataGuru"></div>
+      <div class="row" style="margin-top:12px">
+        <button id="btnTambahGuru" class="alt" type="button">+ Tambah Guru</button>
+        <button id="btnSimpanDataGuru" type="button">Simpan Data Guru</button>
+      </div>
+    </section>
+
+    <section id="t-kelas" class="card hidden">
+      <p style="margin-top:0;color:var(--mute);font-size:13px">Kelola nama kelas dan pilih wali kelas dari data guru. Mengganti nama kelas otomatis memperbarui data siswa dan presensinya.</p>
+      <div id="listKelas"></div>
+      <div class="row" style="margin-top:12px">
+        <button id="btnTambahKelas" class="alt" type="button">+ Tambah Kelas</button>
+        <button id="btnSimpanKelas" type="button">Simpan Data Kelas</button>
+      </div>
     </section>
 
     <section id="t-pengaturan" class="card hidden">
@@ -178,6 +200,8 @@ const TAB = [
   ['guru', 'Presensi Guru', ['admin', 'piket']],
   ['kejadian', 'Kejadian', ['admin', 'piket']],
   ['laporan', 'Laporan', ['admin', 'piket', 'kepsek', 'walikelas', 'guru']],
+  ['dataguru', 'Data Guru', ['admin']],
+  ['kelas', 'Data Kelas', ['admin']],
   ['pengaturan', 'Pengaturan', ['admin']],
   ['akun', 'Akun', ['admin', 'piket', 'kepsek', 'walikelas', 'guru']]
 ];
@@ -189,14 +213,19 @@ function mulai() {
   const boleh = TAB.filter(t => t[2].includes(sesi.role));
   $('tabs').innerHTML = boleh.map(t => `<button role="tab" data-t="${t[0]}" aria-selected="false">${t[1]}</button>`).join('');
   $('tabs').querySelectorAll('button').forEach(b => b.onclick = () => pilihTab(b.dataset.t));
-  $('kelas').innerHTML = '<option value="">- pilih kelas -</option>' + boot.kelas.map(k => `<option>${esc(k)}</option>`).join('');
+  isiKelas();
   pilihTab(boleh[0][0]);
+}
+function isiKelas() {
+  $('kelas').innerHTML = '<option value="">- pilih kelas -</option>' + boot.kelas.map(k => `<option>${esc(k)}</option>`).join('');
 }
 function pilihTab(t) {
   info('');
   TAB.forEach(x => $('t-' + x[0]).classList.toggle('hidden', x[0] !== t));
   $('tabs').querySelectorAll('button').forEach(b => b.setAttribute('aria-selected', b.dataset.t === t));
   if (t === 'guru') renderGuru();
+  if (t === 'dataguru') muatDataGuru();
+  if (t === 'kelas') muatKelas();
   if (t === 'pengaturan') muatPengaturan();
 }
 $('tgl').onchange = () => { $('listSiswa').innerHTML = '<div class="kosong">Pilih kelas untuk memuat daftar siswa.</div>'; $('btnSimpanSiswa').classList.add('hidden'); $('kelas').value = ''; if (!$('t-guru').classList.contains('hidden')) renderGuru(); };
@@ -274,6 +303,79 @@ $('btnGanti').onclick = () => jalankan($('btnGanti'), async () => {
   await api('gantiPassword', {lama: $('pLama').value, baru: $('pBaru').value});
   $('pLama').value = ''; $('pBaru').value = '';
   info('Password berhasil diganti.');
+});
+
+/* ---- data guru (khusus admin) ---- */
+function barisDataGuru(id, nama, nip) {
+  const d = document.createElement('div');
+  d.className = 'krow g'; d.dataset.id = id || '';
+  d.innerHTML = `<input aria-label="Nama guru" placeholder="Nama lengkap dan gelar" maxlength="100" value="${esc(nama)}">
+    <input aria-label="NIP" placeholder="NIP (opsional)" maxlength="30" inputmode="numeric" value="${esc(nip)}">
+    <button type="button" class="alt">Hapus</button>`;
+  d.querySelector('button').onclick = () => d.remove();
+  $('listDataGuru').appendChild(d);
+  return d;
+}
+async function muatDataGuru() {
+  try {
+    const data = await api('getDataGuru');
+    $('listDataGuru').innerHTML = data.length ? '' : '<div class="kosong">Belum ada guru. Klik "Tambah Guru".</div>';
+    data.forEach(g => barisDataGuru(g.id, g.nama, g.nip));
+  } catch (e) { info(e.message, 'err'); }
+}
+$('btnTambahGuru').onclick = () => {
+  const k = $('listDataGuru').querySelector('.kosong');
+  if (k) k.remove();
+  barisDataGuru('', '', '').querySelector('input').focus();
+};
+$('btnSimpanDataGuru').onclick = () => jalankan($('btnSimpanDataGuru'), async () => {
+  const rows = [...$('listDataGuru').querySelectorAll('.krow')].map(d => {
+    const [nama, nip] = d.querySelectorAll('input');
+    return {id: d.dataset.id, nama: nama.value, nip: nip.value};
+  });
+  await api('simpanDataGuru', {rows});
+  boot = await api('bootstrap');
+  await muatDataGuru();
+  info('Data guru tersimpan.');
+});
+
+/* ---- data kelas & wali kelas (khusus admin) ---- */
+let guruNama = [];
+function barisKelas(kelas, wali, lama) {
+  const d = document.createElement('div');
+  d.className = 'krow'; d.dataset.lama = lama || '';
+  const adaWali = !wali || guruNama.includes(wali);
+  d.innerHTML = `<input aria-label="Nama kelas" placeholder="Nama kelas, mis. 7A" maxlength="30" value="${esc(kelas)}">
+    <select aria-label="Wali kelas"><option value="">- belum ditentukan -</option>${adaWali ? '' : `<option selected>${esc(wali)}</option>`}${guruNama.map(n => `<option${n === wali ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>
+    <button type="button" class="alt">Hapus</button>`;
+  d.querySelector('button').onclick = () => d.remove();
+  $('listKelas').appendChild(d);
+  return d;
+}
+async function muatKelas() {
+  try {
+    const d = await api('getKelas');
+    guruNama = d.guru;
+    $('listKelas').innerHTML = '';
+    if (!d.kelas.length) $('listKelas').innerHTML = '<div class="kosong">Belum ada kelas. Klik "Tambah Kelas".</div>';
+    if (!d.guru.length) info('Data guru masih kosong. Isi sheet Guru agar wali kelas bisa dipilih.', 'err');
+    d.kelas.forEach(r => barisKelas(r.kelas, r.walikelas, r.kelas));
+  } catch (e) { info(e.message, 'err'); }
+}
+$('btnTambahKelas').onclick = () => {
+  const k = $('listKelas').querySelector('.kosong');
+  if (k) k.remove();
+  barisKelas('', '', '').querySelector('input').focus();
+};
+$('btnSimpanKelas').onclick = () => jalankan($('btnSimpanKelas'), async () => {
+  const rows = [...$('listKelas').querySelectorAll('.krow')].map(d => ({
+    lama: d.dataset.lama, kelas: d.querySelector('input').value, walikelas: d.querySelector('select').value
+  }));
+  await api('simpanKelas', {rows});
+  boot = await api('bootstrap');
+  isiKelas();
+  await muatKelas();
+  info('Data kelas tersimpan.');
 });
 
 /* ---- pengaturan (khusus admin) ---- */
