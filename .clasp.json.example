@@ -1,0 +1,17 @@
+{
+  "scriptId": "GANTI_DENGAN_SCRIPT_ID",
+  "rootDir": "src",
+  "filePushOrder": [
+    "src/Config.js",
+    "src/Util.js",
+    "src/Crypto.js",
+    "src/Db.js",
+    "src/Audit.js",
+    "src/Users.js",
+    "src/Roles.js",
+    "src/Auth.js",
+    "src/Api.js",
+    "src/Main.js",
+    "src/Setup.js"
+  ]
+}
