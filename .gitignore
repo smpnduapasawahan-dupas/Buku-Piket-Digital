@@ -1,0 +1,6 @@
+# Jangan pernah commit: berisi ID skrip dan token login clasp
+.clasp.json
+.clasprc.json
+node_modules/
+.DS_Store
+*.log
